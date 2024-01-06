@@ -1,0 +1,58 @@
+name: Build Caddy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'caddy version'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        check-latest: true
+
+    - name: Install xcaddy
+      run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
+    - name: Build caddy
+      run: |
+        mkdir ./release-tmp
+        ~/go/bin/xcaddy build ${{ inputs.version }} \
+          --with github.com/mholt/caddy-l4 \
+          --with github.com/caddy-dns/cloudflare \
+          --with github.com/caddy-dns/duckdns \
+          --with github.com/mholt/caddy-dynamicdns \
+          --with github.com/mholt/caddy-events-exec \
+          --with github.com/WeidiDeng/caddy-cloudflare-ip \
+          --with github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@naive \
+          --with github.com/mholt/caddy-webdav \
+          --output ./release-tmp/caddy
+
+    - name: Calculate Hash
+      run: |
+        cd ./release-tmp || exit 1
+        sha256sum * > sha256
+
+    - name: Generate tar
+      run: |
+        mkdir ./release-ready
+        cd ./release-tmp
+        tar -cJvf ../release-ready/caddy-linux-amd64.tar.xz *
+
+    - name: Upload to GitHub Release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./release-ready/caddy-linux-amd64.tar.xz
+        tag: ${{ github.ref }}
+        release_name: ${{ inputs.version }}
+        overwrite: true
